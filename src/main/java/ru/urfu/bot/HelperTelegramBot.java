@@ -1,7 +1,6 @@
 package ru.urfu.bot;
 
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.stereotype.Component;
+import org.telegram.telegrambots.bots.DefaultBotOptions;
 import org.telegram.telegrambots.bots.TelegramLongPollingBot;
 import org.telegram.telegrambots.meta.api.methods.send.SendMessage;
 import org.telegram.telegrambots.meta.api.objects.Message;
@@ -15,20 +14,20 @@ import java.util.ArrayList;
 import java.util.List;
 
 /**
- * Основной класс Telegram-бота, принимающий входящие обновления и
- * маршрутизирующий команды.
+ * Основной класс Telegram-бота, маршрутизирующий входящие сообщения по
+ * командам.
  */
-@Component
-public class WeatherTelegramBot extends TelegramLongPollingBot {
+public class HelperTelegramBot extends TelegramLongPollingBot {
 
     private final String botUsername;
     private final List<BotCommand> commands;
 
-    public WeatherTelegramBot(
-            @Value("${telegram.bot.token}") String botToken,
-            @Value("${telegram.bot.username}") String botUsername,
+    public HelperTelegramBot(
+            DefaultBotOptions options,
+            String botToken,
+            String botUsername,
             List<BotCommand> commands) {
-        super(botToken);
+        super(options, botToken);
         this.botUsername = botUsername;
         this.commands = commands;
     }
@@ -48,12 +47,11 @@ public class WeatherTelegramBot extends TelegramLongPollingBot {
         long chatId = message.getChatId();
 
         if (!message.hasText()) {
-            sendNotification(chatId, "Я понимаю только текстовые сообщения и команды. Нажмите /help для справки.");
+            sendNotification(chatId, "Я обрабатываю только текстовые сообщения. Нажмите /help для справки.");
             return;
         }
 
-        String messageText = message.getText();
-        String responseText = resolveResponse(messageText);
+        String responseText = resolveResponse(message.getText());
         sendNotification(chatId, responseText);
     }
 
@@ -63,7 +61,7 @@ public class WeatherTelegramBot extends TelegramLongPollingBot {
                 return command.execute(messageText);
             }
         }
-        return "Неизвестная команда. Используйте кнопки меню или отправьте /help, чтобы увидеть список команд.";
+        return "Неизвестная команда. Воспользуйтесь кнопками ниже или введите /help.";
     }
 
     private void sendNotification(long chatId, String text) {
@@ -84,11 +82,11 @@ public class WeatherTelegramBot extends TelegramLongPollingBot {
         List<KeyboardRow> keyboard = new ArrayList<>();
 
         KeyboardRow firstRow = new KeyboardRow();
-        firstRow.add("Погода в Екатеринбурге");
-        firstRow.add("Погода в Москве");
+        firstRow.add("Книги по Java");
+        firstRow.add("Книги Clean Code");
 
         KeyboardRow secondRow = new KeyboardRow();
-        secondRow.add("Курс валют");
+        secondRow.add("Топ проектов GitHub");
         secondRow.add("Справка");
 
         keyboard.add(firstRow);
