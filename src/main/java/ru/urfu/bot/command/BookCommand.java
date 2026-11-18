@@ -30,7 +30,7 @@ public class BookCommand implements BotCommand {
     public String execute(String messageText) {
         String normalized = messageText.trim();
         if (BTN_JAVA.equalsIgnoreCase(normalized)) {
-            return bookService.searchBooks("Java Programming");
+            return bookService.searchBooks("Java");
         }
         if (BTN_CLEAN.equalsIgnoreCase(normalized)) {
             return bookService.searchBooks("Clean Code");

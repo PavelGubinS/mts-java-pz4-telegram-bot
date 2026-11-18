@@ -4,7 +4,7 @@ import org.springframework.stereotype.Component;
 import ru.urfu.bot.service.GitHubService;
 
 /**
- * Обработчик команды /repo и кнопки быстрого поиска репозиториев на GitHub.
+ * Обработчик команды /repo и кнопки быстрого поиска репозиториев.
  */
 @Component
 public class RepoCommand implements BotCommand {
@@ -28,7 +28,7 @@ public class RepoCommand implements BotCommand {
     public String execute(String messageText) {
         String normalized = messageText.trim();
         if (BTN_TOP_GITHUB.equalsIgnoreCase(normalized)) {
-            return gitHubService.searchRepositories("java spring boot");
+            return gitHubService.searchRepositories("java");
         }
         String query = normalized.substring("/repo".length()).trim();
         return gitHubService.searchRepositories(query);
