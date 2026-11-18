@@ -1,7 +1,12 @@
+
 package ru.urfu.bot.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
@@ -23,8 +28,13 @@ public class CurrencyService {
      */
     public String getCurrencyRates() {
         try {
-            String response = restTemplate.getForObject(CBR_DAILY_URL, String.class);
-            JsonNode valute = objectMapper.readTree(response).path("Valute");
+            HttpHeaders headers = new HttpHeaders();
+            headers.set(HttpHeaders.USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) CurrencyBot/1.0");
+            HttpEntity<Void> entity = new HttpEntity<>(headers);
+
+            ResponseEntity<String> response = restTemplate.exchange(
+                    CBR_DAILY_URL, HttpMethod.GET, entity, String.class);
+            JsonNode valute = objectMapper.readTree(response.getBody()).path("Valute");
 
             double usd = valute.path("USD").path("Value").asDouble();
             double eur = valute.path("EUR").path("Value").asDouble();
@@ -37,6 +47,7 @@ public class CurrencyService {
                             "Китайский юань (CNY): %.2f руб.",
                     usd, eur, cny);
         } catch (Exception e) {
+            e.printStackTrace();
             return "Не удалось загрузить курсы валют. Попробуйте повторить запрос позже.";
         }
     }

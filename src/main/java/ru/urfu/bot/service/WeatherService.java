@@ -2,6 +2,10 @@ package ru.urfu.bot.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.http.HttpEntity;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.HttpMethod;
+import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.util.UriComponentsBuilder;
@@ -39,7 +43,7 @@ public class WeatherService {
                     .build()
                     .toUri();
 
-            String geoResponse = restTemplate.getForObject(geoUri, String.class);
+            String geoResponse = fetchJson(geoUri);
             JsonNode geoRoot = objectMapper.readTree(geoResponse);
             JsonNode results = geoRoot.path("results");
 
@@ -61,7 +65,7 @@ public class WeatherService {
                     .build()
                     .toUri();
 
-            String weatherResponse = restTemplate.getForObject(weatherUri, String.class);
+            String weatherResponse = fetchJson(weatherUri);
             JsonNode currentWeather = objectMapper.readTree(weatherResponse).path("current_weather");
 
             double temperature = currentWeather.path("temperature").asDouble();
@@ -72,7 +76,16 @@ public class WeatherService {
                     "Погода в г. %s:%nТемпература: %+.1f °C%nСкорость ветра: %.1f км/ч",
                     locationTitle, temperature, windSpeed);
         } catch (Exception e) {
+            e.printStackTrace();
             return "Не удалось получить данные о погоде. Внешний сервис временно недоступен.";
         }
+    }
+
+    private String fetchJson(URI uri) {
+        HttpHeaders headers = new HttpHeaders();
+        headers.set(HttpHeaders.USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) WeatherBot/1.0");
+        HttpEntity<Void> entity = new HttpEntity<>(headers);
+        ResponseEntity<String> response = restTemplate.exchange(uri, HttpMethod.GET, entity, String.class);
+        return response.getBody();
     }
 }
