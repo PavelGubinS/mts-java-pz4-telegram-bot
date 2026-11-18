@@ -1,0 +1,8 @@
+spring:
+  application:
+    name: telegram-bot
+
+telegram:
+  bot:
+    username: gubin_pz4_helper_bot
+    token: ${TELEGRAM_BOT_TOKEN}
