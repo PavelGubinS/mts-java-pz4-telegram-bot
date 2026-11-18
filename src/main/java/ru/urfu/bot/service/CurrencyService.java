@@ -1,25 +1,25 @@
-
 package ru.urfu.bot.service;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.NodeList;
+
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
+import java.io.InputStream;
+import java.net.URI;
+import java.net.URLConnection;
+import java.util.HashMap;
+import java.util.Map;
 
 /**
- * Сервис для получения актуальных курсов валют от Центрального банка РФ.
+ * Сервис для получения актуальных курсов валют с официального портала Центрального банка РФ.
  */
 @Service
 public class CurrencyService {
 
-    private static final String CBR_DAILY_URL = "https://cbr-xml-daily.ru";
-
-    private final RestTemplate restTemplate = new RestTemplate();
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private static final String CBR_XML_URL = "https://cbr.ru";
 
     /**
      * Возвращает актуальные курсы USD, EUR и CNY к рублю.
@@ -28,27 +28,47 @@ public class CurrencyService {
      */
     public String getCurrencyRates() {
         try {
-            HttpHeaders headers = new HttpHeaders();
-            headers.set(HttpHeaders.USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) CurrencyBot/1.0");
-            HttpEntity<Void> entity = new HttpEntity<>(headers);
+            URLConnection connection = URI.create(CBR_XML_URL).toURL().openConnection();
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0");
+            connection.setConnectTimeout(5000);
+            connection.setReadTimeout(5000);
 
-            ResponseEntity<String> response = restTemplate.exchange(
-                    CBR_DAILY_URL, HttpMethod.GET, entity, String.class);
-            JsonNode valute = objectMapper.readTree(response.getBody()).path("Valute");
+            Map<String, Double> rates = new HashMap<>();
 
-            double usd = valute.path("USD").path("Value").asDouble();
-            double eur = valute.path("EUR").path("Value").asDouble();
-            double cny = valute.path("CNY").path("Value").asDouble();
+            try (InputStream inputStream = connection.getInputStream()) {
+                DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+                DocumentBuilder builder = factory.newDocumentBuilder();
+                Document document = builder.parse(inputStream);
+
+                NodeList valutes = document.getElementsByTagName("Valute");
+                for (int i = 0; i < valutes.getLength(); i++) {
+                    Element valute = (Element) valutes.item(i);
+                    String charCode = valute.getElementsByTagName("CharCode").item(0).getTextContent();
+                    if ("USD".equals(charCode) || "EUR".equals(charCode) || "CNY".equals(charCode)) {
+                        String valueStr = valute.getElementsByTagName("Value").item(0).getTextContent().replace(',', '.');
+                        String nominalStr = valute.getElementsByTagName("Nominal").item(0).getTextContent();
+                        double rate = Double.parseDouble(valueStr) / Double.parseDouble(nominalStr);
+                        rates.put(charCode, rate);
+                    }
+                }
+            }
+
+            if (rates.isEmpty()) {
+                return "Не удалось распознать данные о курсах валют.";
+            }
 
             return String.format(
                     "Актуальный курс валют ЦБ РФ:%n" +
-                            "Доллар США (USD): %.2f руб.%n" +
-                            "Евро (EUR): %.2f руб.%n" +
-                            "Китайский юань (CNY): %.2f руб.",
-                    usd, eur, cny);
+                    "Доллар США (USD): %.2f руб.%n" +
+                    "Евро (EUR): %.2f руб.%n" +
+                    "Китайский юань (CNY): %.2f руб.",
+                    rates.getOrDefault("USD", 0.0),
+                    rates.getOrDefault("EUR", 0.0),
+                    rates.getOrDefault("CNY", 0.0)
+            );
         } catch (Exception e) {
             e.printStackTrace();
-            return "Не удалось загрузить курсы валют. Попробуйте повторить запрос позже.";
+            return "Не удалось загрузить курсы валют с сайта ЦБ РФ. Попробуйте повторить запрос позже.";
         }
     }
 }

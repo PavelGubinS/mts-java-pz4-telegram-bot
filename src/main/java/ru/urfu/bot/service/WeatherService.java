@@ -2,30 +2,28 @@ package ru.urfu.bot.service;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.springframework.http.HttpEntity;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.HttpMethod;
-import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import org.springframework.web.client.RestTemplate;
-import org.springframework.web.util.UriComponentsBuilder;
 
+import java.io.InputStream;
 import java.net.URI;
+import java.net.URLConnection;
+import java.net.URLEncoder;
+import java.nio.charset.StandardCharsets;
 
 /**
- * Сервис для получения текущей погоды через открытый API Open-Meteo.
+ * Сервис для получения текущей погоды через открытый JSON API wttr.in.
  */
 @Service
 public class WeatherService {
 
-    private final RestTemplate restTemplate = new RestTemplate();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     /**
      * Возвращает отформатированную сводку погоды для указанного города.
      *
      * @param city название города (например, Екатеринбург или Москва)
-     * @return строка с температурой и скоростью ветра либо описание ошибки
+     * @return строка с температурой, ощущением и скоростью ветра либо описание
+     *         ошибки
      */
     public String getWeather(String city) {
         if (city == null || city.isBlank()) {
@@ -33,59 +31,46 @@ public class WeatherService {
         }
 
         try {
-            URI geoUri = UriComponentsBuilder
-                    .fromUriString("https://open-meteo.com")
-                    .queryParam("name", city.trim())
-                    .queryParam("count", 1)
-                    .queryParam("language", "ru")
-                    .queryParam("format", "json")
-                    .encode()
-                    .build()
-                    .toUri();
+            String encodedCity = URLEncoder.encode(city.trim(), StandardCharsets.UTF_8);
+            String urlString = "https://wttr.in" + encodedCity + "?format=j1&lang=ru";
 
-            String geoResponse = fetchJson(geoUri);
-            JsonNode geoRoot = objectMapper.readTree(geoResponse);
-            JsonNode results = geoRoot.path("results");
+            URLConnection connection = URI.create(urlString).toURL().openConnection();
+            connection.setRequestProperty("User-Agent", "curl/8.0");
+            connection.setConnectTimeout(7000);
+            connection.setReadTimeout(7000);
 
-            if (!results.isArray() || results.isEmpty()) {
-                return "Город «" + city + "» не найден. Проверьте правильность написания.";
+            try (InputStream inputStream = connection.getInputStream()) {
+                JsonNode root = objectMapper.readTree(inputStream);
+                JsonNode currentList = root.path("current_condition");
+
+                if (!currentList.isArray() || currentList.isEmpty()) {
+                    return "Город «" + city + "» не найден. Проверьте правильность написания.";
+                }
+
+                JsonNode current = currentList.get(0);
+                String tempC = current.path("temp_C").asText();
+                String feelsLikeC = current.path("FeelsLikeC").asText();
+                String windKmph = current.path("windspeedKmph").asText();
+                String humidity = current.path("humidity").asText();
+
+                String description = "";
+                JsonNode langRu = current.path("lang_ru");
+                if (langRu.isArray() && !langRu.isEmpty()) {
+                    description = langRu.get(0).path("value").asText("");
+                }
+
+                return String.format(
+                        "Погода в г. %s:%n" +
+                                "Состояние: %s%n" +
+                                "Температура: %s °C (ощущается как %s °C)%n" +
+                                "Ветер: %s км/ч, влажность: %s%%",
+                        city.trim(),
+                        description.isEmpty() ? "нет описания" : description,
+                        tempC, feelsLikeC, windKmph, humidity);
             }
-
-            JsonNode location = results.get(0);
-            String resolvedName = location.path("name").asText(city);
-            String country = location.path("country").asText("");
-            double latitude = location.path("latitude").asDouble();
-            double longitude = location.path("longitude").asDouble();
-
-            URI weatherUri = UriComponentsBuilder
-                    .fromUriString("https://open-meteo.com")
-                    .queryParam("latitude", latitude)
-                    .queryParam("longitude", longitude)
-                    .queryParam("current_weather", true)
-                    .build()
-                    .toUri();
-
-            String weatherResponse = fetchJson(weatherUri);
-            JsonNode currentWeather = objectMapper.readTree(weatherResponse).path("current_weather");
-
-            double temperature = currentWeather.path("temperature").asDouble();
-            double windSpeed = currentWeather.path("windspeed").asDouble();
-
-            String locationTitle = country.isEmpty() ? resolvedName : resolvedName + " (" + country + ")";
-            return String.format(
-                    "Погода в г. %s:%nТемпература: %+.1f °C%nСкорость ветра: %.1f км/ч",
-                    locationTitle, temperature, windSpeed);
         } catch (Exception e) {
             e.printStackTrace();
-            return "Не удалось получить данные о погоде. Внешний сервис временно недоступен.";
+            return "Не удалось получить данные о погоде для города «" + city + "». Попробуйте позже.";
         }
-    }
-
-    private String fetchJson(URI uri) {
-        HttpHeaders headers = new HttpHeaders();
-        headers.set(HttpHeaders.USER_AGENT, "Mozilla/5.0 (Windows NT 10.0; Win64; x64) WeatherBot/1.0");
-        HttpEntity<Void> entity = new HttpEntity<>(headers);
-        ResponseEntity<String> response = restTemplate.exchange(uri, HttpMethod.GET, entity, String.class);
-        return response.getBody();
     }
 }
