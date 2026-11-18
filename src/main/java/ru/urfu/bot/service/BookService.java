@@ -20,6 +20,8 @@ import java.time.Duration;
 @Service
 public class BookService {
 
+    private static final String SEARCH_ENDPOINT = "https://openlibrary.org";
+
     private final ObjectMapper objectMapper = new ObjectMapper();
     private final HttpClient httpClient = HttpClient.newBuilder()
             .proxy(ProxySelector.of(new InetSocketAddress("127.0.0.1", 10809)))
@@ -34,10 +36,10 @@ public class BookService {
 
         try {
             String encoded = URLEncoder.encode(query.trim(), StandardCharsets.UTF_8);
-            String url = "https://openlibrary.org" + encoded + "&limit=3";
+            URI uri = URI.create(SEARCH_ENDPOINT + "?q=" + encoded + "&limit=3");
 
             HttpRequest request = HttpRequest.newBuilder()
-                    .uri(URI.create(url))
+                    .uri(uri)
                     .header("User-Agent", "Java-Telegram-Bot-UrFU")
                     .timeout(Duration.ofSeconds(10))
                     .GET()
