@@ -1,76 +1,119 @@
 package ru.urfu.bot.service;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import org.springframework.stereotype.Service;
+import org.w3c.dom.Document;
+import org.w3c.dom.Element;
+import org.w3c.dom.NodeList;
 
+import javax.xml.parsers.DocumentBuilder;
+import javax.xml.parsers.DocumentBuilderFactory;
 import java.io.InputStream;
 import java.net.URI;
 import java.net.URLConnection;
-import java.net.URLEncoder;
-import java.nio.charset.StandardCharsets;
+import java.util.Map;
 
 /**
- * Сервис для получения текущей погоды через открытый JSON API wttr.in.
+ * Сервис для получения текущей погоды через открытый XML-сервис Яндекс.Погоды.
  */
 @Service
 public class WeatherService {
 
-    private final ObjectMapper objectMapper = new ObjectMapper();
+    private static final Map<String, Integer> CITY_REGIONS = Map.ofEntries(
+            Map.entry("екатеринбург", 54),
+            Map.entry("москва", 213),
+            Map.entry("санкт-петербург", 2),
+            Map.entry("питер", 2),
+            Map.entry("новосибирск", 65),
+            Map.entry("казань", 43),
+            Map.entry("нижний новгород", 47),
+            Map.entry("челябинск", 56),
+            Map.entry("самара", 51),
+            Map.entry("омск", 66),
+            Map.entry("ростов-на-дону", 39),
+            Map.entry("уфа", 172),
+            Map.entry("красноярск", 62),
+            Map.entry("пермь", 50),
+            Map.entry("воронеж", 193),
+            Map.entry("волгоград", 38),
+            Map.entry("тюмень", 55));
 
     /**
      * Возвращает отформатированную сводку погоды для указанного города.
      *
      * @param city название города (например, Екатеринбург или Москва)
-     * @return строка с температурой, ощущением и скоростью ветра либо описание
-     *         ошибки
+     * @return строка с температурой, состоянием неба и скоростью ветра либо
+     *         описание ошибки
      */
     public String getWeather(String city) {
         if (city == null || city.isBlank()) {
             return "Пожалуйста, укажите название города. Пример: /weather Екатеринбург";
         }
 
-        try {
-            String encodedCity = URLEncoder.encode(city.trim(), StandardCharsets.UTF_8);
-            String urlString = "https://wttr.in" + encodedCity + "?format=j1&lang=ru";
+        String normalizedCity = city.trim().toLowerCase();
+        Integer regionId = CITY_REGIONS.get(normalizedCity);
 
+        if (regionId == null) {
+            return "Город «" + city.trim() + "» пока не поддерживается. Доступные города: "
+                    + "Екатеринбург, Москва, Санкт-Петербург, Казань, Челябинск, Тюмень, Пермь, Новосибирск и др.";
+        }
+
+        try {
+            String urlString = "https://yandex.ru" + regionId;
             URLConnection connection = URI.create(urlString).toURL().openConnection();
-            connection.setRequestProperty("User-Agent", "curl/8.0");
-            connection.setConnectTimeout(7000);
-            connection.setReadTimeout(7000);
+            connection.setRequestProperty("User-Agent", "Mozilla/5.0");
+            connection.setConnectTimeout(5000);
+            connection.setReadTimeout(5000);
 
             try (InputStream inputStream = connection.getInputStream()) {
-                JsonNode root = objectMapper.readTree(inputStream);
-                JsonNode currentList = root.path("current_condition");
+                DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
+                DocumentBuilder builder = factory.newDocumentBuilder();
+                Document document = builder.parse(inputStream);
 
-                if (!currentList.isArray() || currentList.isEmpty()) {
-                    return "Город «" + city + "» не найден. Проверьте правильность написания.";
+                NodeList weatherNodes = document.getElementsByTagName("weather");
+                if (weatherNodes.getLength() == 0) {
+                    return "Не удалось получить погодную сводку для города «" + city.trim() + "».";
                 }
 
-                JsonNode current = currentList.get(0);
-                String tempC = current.path("temp_C").asText();
-                String feelsLikeC = current.path("FeelsLikeC").asText();
-                String windKmph = current.path("windspeedKmph").asText();
-                String humidity = current.path("humidity").asText();
+                Element weather = (Element) weatherNodes.item(0);
+                Element day = (Element) weather.getElementsByTagName("day").item(0);
+                Element dayPart = (Element) day.getElementsByTagName("day_part").item(0);
 
-                String description = "";
-                JsonNode langRu = current.path("lang_ru");
-                if (langRu.isArray() && !langRu.isEmpty()) {
-                    description = langRu.get(0).path("value").asText("");
+                String temp = getTagText(dayPart, "temperature");
+                if (temp.isEmpty()) {
+                    String from = getTagText(dayPart, "temperature_from");
+                    String to = getTagText(dayPart, "temperature_to");
+                    temp = from + "..." + to;
                 }
+                String weatherType = getTagText(dayPart, "weather_type");
+                String windSpeed = getTagText(dayPart, "wind_speed");
+                String humidity = getTagText(dayPart, "humidity");
 
                 return String.format(
-                        "Погода в г. %s:%n" +
+                        "Погода в г. %s (Яндекс.Погода):%n" +
                                 "Состояние: %s%n" +
-                                "Температура: %s °C (ощущается как %s °C)%n" +
-                                "Ветер: %s км/ч, влажность: %s%%",
-                        city.trim(),
-                        description.isEmpty() ? "нет описания" : description,
-                        tempC, feelsLikeC, windKmph, humidity);
+                                "Температура: %s °C%n" +
+                                "Ветер: %s м/с, влажность: %s%%",
+                        capitalize(city.trim()), weatherType, temp, windSpeed, humidity);
             }
         } catch (Exception e) {
             e.printStackTrace();
-            return "Не удалось получить данные о погоде для города «" + city + "». Попробуйте позже.";
+            return "Не удалось получить данные о погоде для города «" + city.trim()
+                    + "». Проверьте подключение к сети.";
         }
+    }
+
+    private String getTagText(Element parent, String tagName) {
+        NodeList list = parent.getElementsByTagName(tagName);
+        if (list.getLength() > 0) {
+            return list.item(0).getTextContent().trim();
+        }
+        return "";
+    }
+
+    private String capitalize(String text) {
+        if (text.isEmpty()) {
+            return text;
+        }
+        return text.substring(0, 1).toUpperCase() + text.substring(1);
     }
 }
